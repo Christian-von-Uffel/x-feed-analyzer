@@ -9,6 +9,9 @@
   --line: #e6ecf0;
   --accent: #1d9bf0;
   --accent-soft: rgba(29, 155, 240, 0.12);
+  --accent-ink: #0f6fb8;
+  --acct-soft: rgba(127, 119, 221, 0.16);
+  --acct-ink: #534ab7;
   --match: #f4a52a;
   --match-soft: rgba(244, 165, 42, 0.35);
   --danger: #f4212e;
@@ -25,6 +28,9 @@
   --muted: #8b98a5;
   --line: #2f3336;
   --accent-soft: rgba(29, 155, 240, 0.18);
+  --accent-ink: #8ecdf8;
+  --acct-soft: rgba(127, 119, 221, 0.28);
+  --acct-ink: #cecbf6;
   --match-soft: rgba(244, 165, 42, 0.45);
 }
 
@@ -506,22 +512,39 @@ label.dates .dash { color: var(--muted); }
 .sel-tools button:hover { background: var(--accent-soft); }
 .sel-tools button.primary { color: var(--accent); }
 
-/* Shift-click chord: words gathered from the clouds, searched on X when Shift comes up */
+/* X search tray: accounts and words, Shift-clicked anywhere or typed, searched on X when Shift comes up */
 .chord-tray { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 35; display: flex; flex-direction: column; gap: 8px; width: min(560px, calc(100vw - 32px)); padding: 10px 12px; background: var(--bg); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); font-size: 13px; }
 .chord-tray.at-top { bottom: auto; top: 64px; }
 .chord-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chord-row .grow { flex: 1; }
-.chord-label { font-weight: 700; margin-right: 2px; }
-.chord-empty, .chord-note { color: var(--muted); font-size: 12px; }
-.chord-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--text); font-weight: 600; }
-.chord-chip .chord-x { border: 0; background: transparent; color: var(--muted); padding: 0 4px; font-size: 11px; line-height: 1.4; }
-.chord-chip .chord-x:hover { color: var(--text); background: transparent; }
+.chord-label { font-weight: 700; min-width: 64px; }
+.chord-chips { display: contents; }
+.chord-note { color: var(--muted); font-size: 12px; }
+.chord-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 999px; font-weight: 600; }
+.chord-chip.word { background: var(--accent-soft); color: var(--accent-ink); }
+.chord-chip.acct { background: var(--acct-soft); color: var(--acct-ink); }
+.chord-tray.scope-all .chord-chip.acct { opacity: 0.45; text-decoration: line-through; }
+.chord-chip .chord-t { border: 0; border-radius: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: text; }
+.chord-chip .chord-t:hover { background: transparent; text-decoration: underline dotted; }
+.chord-chip .chord-x { border: 0; background: transparent; color: inherit; opacity: 0.7; padding: 0 4px; font-size: 11px; line-height: 1.4; }
+.chord-chip .chord-x:hover { opacity: 1; background: transparent; }
+.chord-tray input.chord-in { flex: 1 1 120px; min-width: 120px; padding: 3px 2px; border: 0; border-bottom: 1px dashed var(--line); border-radius: 0; background: transparent; font-size: 13px; }
+.chord-tray input.chord-in:focus { border-bottom: 1px solid var(--accent); }
+.chord-tray input.chord-in::placeholder { color: var(--muted); opacity: 0.8; }
+.chord-tray .suggest { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: min(420px, 100%); margin: 0; }
+.chord-tray.at-top .suggest { bottom: auto; top: calc(100% + 6px); }
 .chord-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.chord-seg button { border: 0; border-radius: 0; background: transparent; padding: 4px 9px; font-size: 12px; }
+.chord-seg button { border: 0; border-radius: 0; background: transparent; padding: 4px 10px; font-size: 12px; }
 .chord-seg button + button { border-left: 1px solid var(--line); }
-.chord-seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-.chord-row button.primary { color: var(--accent); font-weight: 700; }
-.chord-q { display: block; color: var(--muted); font: 12px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chord-seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+.chord-row > button { padding: 5px 10px; font-size: 12px; }
+.chord-row > button.primary { color: var(--accent-ink); font-weight: 700; }
+.chord-row > button:disabled { opacity: 0.5; cursor: default; }
+.chord-row > button:disabled:hover { background: var(--bg-2); }
+.chord-row > button.chord-pin { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--muted); font-weight: 400; padding: 4px 6px; }
+.chord-row > button.chord-pin:hover { background: var(--bg-3); color: var(--text); }
+.chord-row > button.chord-pin[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.chord-q { display: block; color: var(--muted); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A word waiting in the chord: accent ink on a soft halo */
 .matrix-view .w.chord, .ctx-cloud-view .w.chord { fill: var(--accent); stroke: var(--accent-soft); stroke-width: 8px; paint-order: stroke; stroke-linejoin: round; }
 .matrix-view svg, .ctx-cloud-view svg { -webkit-user-select: none; user-select: none; }

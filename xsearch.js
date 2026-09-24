@@ -132,23 +132,72 @@
     return parts.join(' ');
   }
 
-  // Cloud words picked together (Shift-click in the viewer) as one X query: every word must appear
-  // (X ANDs space-separated terms), multi-word terms stay together as exact phrases.
-  // scope: 'them' = only @handle's posts, 'others' = everyone but @handle, 'all' = no author part.
-  function wordsQuery(terms, { handle = null, scope = 'all' } = {}) {
+  // The viewer's X search tray (Shift-clicked cloud words and accounts, or typed) as one query.
+  // Every term must appear (X ANDs space-separated terms). A term is a word or phrase, or several
+  // alternatives written "iran | gas prices" (or given as an array), which X ORs:
+  // (iran OR "gas prices"). Multi-word alternatives stay together as exact phrases.
+  // scope: 'them' = only these accounts' posts, 'others' = everyone but them, 'all' = no author part.
+  const alternatives = (term) => (Array.isArray(term) ? term : String(term || '').split('|'))
+    .map((t) => String(t || '').replace(/"/g, '').trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  function termGroup(term) {
+    const seen = new Set();
+    const alts = [];
+    for (const t of alternatives(term)) {
+      if (seen.has(t.toLowerCase())) continue;
+      seen.add(t.toLowerCase());
+      alts.push(t.includes(' ') ? `"${t}"` : t);
+    }
+    return alts.length > 1 ? `(${alts.join(' OR ')})` : alts[0] || '';
+  }
+
+  function handleList(handles) {
+    const seen = new Set();
+    const out = [];
+    for (const raw of handles || []) {
+      const h = String(raw || '').trim().replace(/^@/, '');
+      if (!h || seen.has(h.toLowerCase())) continue;
+      seen.add(h.toLowerCase());
+      out.push(h);
+    }
+    return out;
+  }
+
+  function wordsQuery(terms, { handles = null, handle = null, scope = 'all' } = {}) {
     const seen = new Set();
     const parts = [];
-    for (const raw of terms || []) {
-      const t = String(raw || '').replace(/"/g, '').trim().replace(/\s+/g, ' ');
-      if (!t || seen.has(t.toLowerCase())) continue;
-      seen.add(t.toLowerCase());
-      parts.push(t.includes(' ') ? `"${t}"` : t);
+    for (const term of terms || []) {
+      const g = termGroup(term);
+      if (!g || seen.has(g.toLowerCase())) continue;
+      seen.add(g.toLowerCase());
+      parts.push(g);
     }
-    if (!parts.length) return '';
-    const h = handle ? String(handle).replace(/^@/, '') : '';
-    if (h && scope === 'them') parts.push(`from:${h}`);
-    else if (h && scope === 'others') parts.push(`-from:${h}`);
+    const hs = handleList(handles || (handle ? [handle] : []));
+    if (hs.length && scope === 'them') parts.unshift(hs.length === 1 ? `from:${hs[0]}` : `(${hs.map((h) => `from:${h}`).join(' OR ')})`);
+    else if (hs.length && scope === 'others' && parts.length) parts.push(...hs.map((h) => `-from:${h}`));
     return parts.join(' ');
+  }
+
+  // X's search API documents a 500-character query limit; a longer query in the search box can come
+  // back empty or cut off without saying so. With many accounts, 'them' spreads them over several
+  // queries that each fit. 'others' is never split (each search must leave every account out).
+  const MAX_QUERY = 500;
+  function wordsQueries(terms, { handles = [], scope = 'all', max = MAX_QUERY } = {}) {
+    const hs = handleList(handles);
+    const whole = wordsQuery(terms, { handles: hs, scope });
+    if (scope !== 'them' || hs.length < 2 || whole.length <= max) return whole ? [whole] : [];
+    const out = [];
+    let batch = [];
+    for (const h of hs) {
+      if (batch.length && wordsQuery(terms, { handles: [...batch, h], scope }).length > max) {
+        out.push(wordsQuery(terms, { handles: batch, scope }));
+        batch = [];
+      }
+      batch.push(h);
+    }
+    out.push(wordsQuery(terms, { handles: batch, scope }));
+    return out;
   }
 
   const searchUrl = (query, { latest = true } = {}) => (query ? `https://x.com/search?q=${encodeURIComponent(query)}&src=typed_query${latest ? '&f=live' : ''}` : null);
@@ -182,5 +231,5 @@
     };
   }
 
-  root.XPCXSearch = { words, weigher, phrases, keywords, window, build, wordsQuery, searchUrl, webUrl, compose };
+  root.XPCXSearch = { words, weigher, phrases, keywords, window, build, alternatives, wordsQuery, wordsQueries, MAX_QUERY, searchUrl, webUrl, compose };
 })(typeof self !== 'undefined' ? self : this);

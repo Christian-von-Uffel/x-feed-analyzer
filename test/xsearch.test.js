@@ -82,12 +82,38 @@ for (const p of posts.slice(1, 4)) {
 }
 
 // wordsQuery: cloud words as one query, scoped to or away from an account
-assert.equal(X.wordsQuery(['gas', 'price hikes', '#oil'], { handle: '@bob', scope: 'them' }), 'gas "price hikes" #oil from:bob');
+assert.equal(X.wordsQuery(['gas', 'price hikes', '#oil'], { handle: '@bob', scope: 'them' }), 'from:bob gas "price hikes" #oil');
 assert.equal(X.wordsQuery(['gas', 'Gas', ' '], { handle: 'bob', scope: 'others' }), 'gas -from:bob');
 assert.equal(X.wordsQuery(['gas'], { handle: 'bob', scope: 'all' }), 'gas');
 assert.equal(X.wordsQuery(['gas'], { handle: null, scope: 'them' }), 'gas', 'no handle, no author part');
 assert.equal(X.wordsQuery(['say "no"'], {}), '"say no"', 'quotes inside a term are dropped');
-assert.equal(X.wordsQuery([], { handle: 'bob', scope: 'them' }), '');
+assert.equal(X.wordsQuery([], { handle: 'bob', scope: 'them' }), 'from:bob', 'an account alone is its timeline');
+assert.equal(X.wordsQuery([], { handle: 'bob', scope: 'others' }), '', 'everyone but bob needs a word');
+
+// Several accounts: OR-ed together, or each left out; duplicates and @ dropped
+assert.equal(X.wordsQuery(['border', 'record numbers'], { handles: ['hub_alpha', '@acct_4', 'ACCT_4', 'acct_9'], scope: 'them' }),
+  '(from:hub_alpha OR from:acct_4 OR from:acct_9) border "record numbers"');
+assert.equal(X.wordsQuery(['border'], { handles: ['a', 'b'], scope: 'others' }), 'border -from:a -from:b');
+assert.equal(X.wordsQuery(['border'], { handles: ['a', 'b'], scope: 'all' }), 'border');
+assert.equal(X.wordsQuery([], { handles: ['a', 'b'], scope: 'them' }), '(from:a OR from:b)');
+
+// | inside a term: alternatives, OR-ed in brackets; the terms themselves are AND-ed
+assert.equal(X.wordsQuery(['iran | gas prices'], {}), '(iran OR "gas prices")');
+assert.equal(X.wordsQuery(['iran | regime', 'overthrow|replace'], {}), '(iran OR regime) (overthrow OR replace)');
+assert.equal(X.wordsQuery([['iran', 'regime'], ['overthrow', 'replace']], { handles: ['a'], scope: 'them' }), 'from:a (iran OR regime) (overthrow OR replace)', 'array groups');
+assert.equal(X.wordsQuery(['iran | Iran |', ' | '], {}), 'iran', 'repeated or empty alternatives dropped');
+assert.deepEqual(X.alternatives(' iran |  gas   prices | '), ['iran', 'gas prices']);
+
+// wordsQueries: a long account list spreads over several searches that each fit
+const many = Array.from({ length: 40 }, (_, i) => 'account_number_' + i);
+const split = X.wordsQueries(['iran | regime'], { handles: many, scope: 'them' });
+assert.ok(split.length > 1, 'split into several searches');
+assert.ok(split.every((q) => q.length <= X.MAX_QUERY), 'each fits');
+assert.ok(split.every((q) => q.endsWith(' (iran OR regime)')), 'each keeps the words');
+assert.equal(split.join(' ').match(/from:/g).length, 40, 'every account searched once');
+assert.equal(X.wordsQueries(['gas'], { handles: many, scope: 'others' }).length, 1, 'exclusions are never split');
+assert.deepEqual(X.wordsQueries(['gas'], { handles: ['a', 'b'], scope: 'them' }), ['(from:a OR from:b) gas']);
+assert.deepEqual(X.wordsQueries([], { handles: [], scope: 'them' }), []);
 
 console.log('xsearch.test.js: all checks passed');
 console.log('\nFor the poster_a post:');

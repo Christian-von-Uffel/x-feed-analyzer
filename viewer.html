@@ -20,6 +20,7 @@
     </nav>
     <div class="actions">
       <button id="new-pill" class="pill" hidden></button>
+      <button type="button" id="chord-open" title="Search X for posts from several accounts, with words or without. Shift-click accounts and cloud words anywhere on the page to add them too.">X search</button>
       <button id="refresh" title="Reload from local storage">Refresh</button>
       <details class="menu export-menu" id="export-menu">
         <summary title="Download the current result set (filter first, then export)">Export</summary>
@@ -322,7 +323,28 @@
     <button type="button" data-act="x" title="Search X for this exact phrase, latest first">Search X ↗</button>
     <button type="button" data-act="copy" title="Copy the selected text">Copy</button>
   </div>
-  <div id="chord-tray" class="chord-tray" role="dialog" aria-label="Search X for the Shift-clicked words" hidden></div>
+  <div id="chord-tray" class="chord-tray" role="dialog" aria-label="Search X" hidden>
+    <ul id="chord-suggest" class="suggest" role="listbox" hidden></ul>
+    <div class="chord-row">
+      <span class="chord-label">Accounts</span>
+      <span id="chord-accts" class="chord-chips"></span>
+      <input id="chord-acct-in" class="chord-in" type="text" placeholder="@handle" spellcheck="false" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="chord-suggest" aria-label="Add an account" title="Type a name or @handle: captured accounts are suggested, any other handle is added as typed (Enter, space or comma). Shift-click an account anywhere on the page to add it.">
+    </div>
+    <div class="chord-row">
+      <span class="chord-label">Words</span>
+      <span id="chord-words" class="chord-chips"></span>
+      <input id="chord-word-in" class="chord-in" type="text" placeholder="iran | gas prices" spellcheck="false" autocomplete="off" aria-label="Add a word or phrase" title="Enter adds a word or phrase; every one must appear. | means either: “iran | gas prices” finds posts with iran or with gas prices. Click a chip to edit it. Shift-click cloud words to add them; add Option to join one to the last chip with |.">
+    </div>
+    <div class="chord-row">
+      <span id="chord-seg" class="chord-seg" role="group" aria-label="Whose posts" hidden></span>
+      <span class="grow"></span>
+      <button type="button" id="chord-pin" class="chord-pin" data-act="pin" aria-pressed="false" title="Keep the tray open when Shift comes up, to add accounts and words from anywhere; then press Enter or Search X"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg> Keep open</button>
+      <button type="button" id="chord-go" class="primary" data-act="go">Search X ↗</button>
+      <button type="button" data-act="cancel">Cancel</button>
+    </div>
+    <div id="chord-note" class="chord-note" hidden></div>
+    <code id="chord-q" class="chord-q"></code>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden><span class="t"></span><button type="button" class="undo" hidden>Undo</button></div>
 
   <script src="db.js"></script>

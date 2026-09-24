@@ -44,8 +44,9 @@
     ctxSig: '',       // inputs that produced the account details
     quoteCounts: new Map(), // post id -> how many captured posts quote it
     termTrail: [],    // cloud words clicked in the term cloud after the typed term: every one must appear too
-    chord: null,      // { words, handle, armed } while Shift-clicked cloud words wait to become an X search
-    chordScope: 'them', // who that X search covers: 'them' (the account), 'others' (everyone but them) or 'all'
+    chord: null,      // the X search tray while open: { groups, accounts, armed, held, seeded, editing }
+    chordScope: 'them', // who that X search covers: 'them' (the tray's accounts), 'others' (everyone but them) or 'all'
+    chordPin: false,  // keep the tray open when Shift comes up (persisted)
   };
 
   const MATRIX_SIZE = 1080;
@@ -74,7 +75,9 @@
     mxView: $('#mx-view'), mxTableWrap: $('#mx-table-wrap'), mxTableHead: $('#mx-table-head'), mxTableBody: $('#mx-table-body'),
     mxTabs: Array.from(document.querySelectorAll('.mx-tab')), mxTerm: $('#mx-term'), mxTermCount: $('#mx-term-count'),
     mxWeight: $('#mx-weight'), mxWords: $('#mx-words'), mxHint: $('#mx-hint'),
-    mxTrail: $('#mx-trail'), chordTray: $('#chord-tray'),
+    mxTrail: $('#mx-trail'), chordTray: $('#chord-tray'), chordOpen: $('#chord-open'), chordSuggest: $('#chord-suggest'),
+    chordAccts: $('#chord-accts'), chordWords: $('#chord-words'), chordAcctIn: $('#chord-acct-in'), chordWordIn: $('#chord-word-in'),
+    chordSeg: $('#chord-seg'), chordNote: $('#chord-note'), chordPin: $('#chord-pin'), chordGo: $('#chord-go'), chordQ: $('#chord-q'),
     mxBack: $('#mx-back'), resultsBack: $('#results-back'), resultsHead: $('.results-head'),
     network: $('#network'), nwTypes: Array.from(document.querySelectorAll('input[data-nw-type]')), nwMin: $('#nw-min'), nwNodes: $('#nw-nodes'),
     nwPattern: $('#nw-pattern'), nwTitle: $('#nw-title'), nwTheme: $('#nw-theme'), nwExport: $('#nw-export'),
@@ -253,6 +256,7 @@
       mxTerm: els.mxTerm.value,
       mxTrail: state.termTrail,
       chordScope: state.chordScope,
+      chordPin: state.chordPin,
       mxWeight: els.mxWeight.value,
       mxWords: els.mxWords.value,
       mxKeywords: els.mxKeywords.value,
@@ -296,6 +300,7 @@
     els.mxTerm.value = s.mxTerm || '';
     state.termTrail = Array.isArray(s.mxTrail) ? s.mxTrail.filter((w) => typeof w === 'string' && w) : [];
     state.chordScope = ['them', 'others', 'all'].includes(s.chordScope) ? s.chordScope : 'them';
+    state.chordPin = s.chordPin === true;
     els.mxWeight.value = s.mxWeight === 'frequent' ? 'frequent' : 'distinctive';
     els.mxWords.value = s.mxWords || '60';
     els.mxKeywords.value = s.mxKeywords || '';
@@ -1163,17 +1168,16 @@
     scrollTo(els.resultsHead);
   }
 
-  // One click on a cloud word, wherever the cloud is. Shift gathers words for an X search, Alt
-  // (Option) opens the word's own term cloud, a plain click in the term cloud drills into it, and
-  // elsewhere a plain click lists the posts with the word. `where` is 'panel' (Topics) or 'account'.
+  // One click on a cloud word, wherever the cloud is. Shift gathers words for an X search (with
+  // Option too, as an alternative in the last chip), Alt (Option) alone opens the word's own term
+  // cloud, a plain click in the term cloud drills into it, and elsewhere a plain click lists the
+  // posts with the word. `where` is 'panel' (Topics) or 'account'.
   function wordClick(e, word, handle, where) {
     if (!word) return;
     const inPanel = where === 'panel';
     if (e.shiftKey) {
-      // The tray sits at the bottom, or at the top when the word clicked is low on the screen,
-      // so it never covers the cloud being picked from.
-      els.chordTray.classList.toggle('at-top', e.clientY > window.innerHeight / 2);
-      chordAdd(word, handle || (inPanel ? state.nwFocus : null), inPanel);
+      trayNear(e);
+      chordAdd(word, handle || (inPanel ? state.nwFocus : null), inPanel, e.altKey);
       return;
     }
     if (e.altKey) { pivot(word); return; }
@@ -1230,52 +1234,166 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Shift-click cloud words to gather them; releasing Shift opens one X search (Latest) for all of
-  // them, in a background tab so several can go out in a row and capture pulls the results in.
+  // The X search tray: accounts and words gathered by Shift-clicking them anywhere on the page, or
+  // typed. Releasing Shift opens one X search (Latest) for all of them, in a background tab so
+  // several can go out in a row and capture pulls the results in. Once the tray is touched (or
+  // pinned) it stays open until Enter or Search X. A word chip is a group of alternatives, typed
+  // and shown as "iran | gas prices"; X gets (iran OR "gas prices"), and the chips are AND-ed.
   // ---------------------------------------------------------------------------
 
   const CHORD_SCOPES = [
-    { key: 'them', label: (h) => `@${h}`, tip: (h) => `Only @${h}’s posts (from:${h})` },
-    { key: 'others', label: () => 'Everyone else', tip: (h) => `Other accounts on the same words (-from:${h})` },
-    { key: 'all', label: () => 'Everyone', tip: () => 'Any account' },
+    { key: 'them', label: (hs) => (hs.length === 1 ? `@${hs[0]}` : `These ${hs.length}`), tip: (hs) => (hs.length === 1 ? `Only @${hs[0]}’s posts` : `Only posts from these ${hs.length} accounts`) },
+    { key: 'others', label: () => 'Everyone else', tip: (hs) => `Other accounts on the same words: leaves out ${hs.length === 1 ? '@' + hs[0] : 'these ' + hs.length}` },
+    { key: 'all', label: () => 'Everyone', tip: () => 'Any account: the accounts are left out of the search' },
   ];
-  // A typed term goes into the X search only when it reads as words, not as a regex.
-  const plainTerm = (term, opts) => !opts.regex || /^[\p{L}\p{N}#@_' -]+$/u.test(term);
+  const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
+  const sameHandle = (a, b) => a.toLowerCase() === b.toLowerCase();
+  // A typed term goes into the X search only when it reads as words (| for either), not as a regex.
+  const plainTerm = (term, opts) => !opts.regex || /^[\p{L}\p{N}#@_' |-]+$/u.test(term);
 
-  function chordAdd(word, handle, fromPanel) {
-    if (!state.chord) {
-      // Words picked from a cloud narrowed by the term start from the term and its trail.
-      const words = [];
-      const term = fromPanel ? els.mxTerm.value.trim() : '';
-      if (term) {
-        if (plainTerm(term, getOptions())) words.push(term);
-        words.push(...state.termTrail);
-      }
-      state.chord = { words, handle: null, armed: true };
+  function chordStart(fromPanel) {
+    if (state.chord) return state.chord;
+    // Words picked from a cloud narrowed by the term start from the term and its trail.
+    const groups = [];
+    const term = fromPanel ? els.mxTerm.value.trim() : '';
+    if (term) {
+      if (plainTerm(term, getOptions())) groups.push(XPCXSearch.alternatives(term));
+      for (const w of state.termTrail) groups.push([w]);
     }
-    const c = state.chord;
-    if (!c.handle && handle) c.handle = handle;
-    const i = c.words.indexOf(word);
-    if (i >= 0) c.words.splice(i, 1);
-    else c.words.push(word);
-    c.armed = true;
+    state.chord = { groups: groups.filter((g) => g.length), accounts: [], armed: false, held: false, seeded: false, editing: null };
+    return state.chord;
+  }
+
+  // Armed = releasing Shift searches. Not once the tray has been touched, nor while it is pinned.
+  const arm = (c) => { c.armed = !state.chordPin && !c.held; };
+
+  // The tray sits at the bottom, or at the top when the click is low on the screen, so it never
+  // covers what is being picked from.
+  const trayNear = (e) => els.chordTray.classList.toggle('at-top', e.clientY > window.innerHeight / 2);
+
+  function chordAdd(word, handle, fromPanel, orJoin) {
+    const c = chordStart(fromPanel);
+    // The account whose cloud it is joins with the first word; taken out, it stays out.
+    if (handle && !c.seeded && !c.accounts.length) addAccounts(c, [handle]);
+    c.seeded = true;
+    const key = word.toLowerCase();
+    const last = c.groups[c.groups.length - 1];
+    if (orJoin && last) {
+      // Shift+Option: the word becomes (or stops being) an alternative in the last chip.
+      const i = last.findIndex((a) => a.toLowerCase() === key);
+      if (i >= 0) last.splice(i, 1); else last.push(word);
+      if (!last.length) c.groups.pop();
+    } else {
+      const i = c.groups.findIndex((g) => g.length === 1 && g[0].toLowerCase() === key);
+      if (i >= 0) c.groups.splice(i, 1); else c.groups.push([word]);
+    }
+    arm(c);
     renderChord();
   }
 
-  const chordQuery = (c) => XPCXSearch.wordsQuery(c.words, { handle: c.handle, scope: c.handle ? state.chordScope : 'all' });
+  // An account added on purpose while the switch says Everyone (which leaves accounts out) turns
+  // the switch back to these accounts.
+  const accountsWanted = () => { if (state.chordScope === 'all') { state.chordScope = 'them'; saveState(); } };
+
+  // Adds the valid handles not already there; returns the tokens that are not handles.
+  function addAccounts(c, tokens) {
+    const bad = [];
+    for (const raw of tokens) {
+      const h = String(raw || '').trim().replace(/^@/, '');
+      if (!h) continue;
+      if (!HANDLE_RE.test(h)) { bad.push(raw); continue; }
+      if (!c.accounts.some((a) => sameHandle(a, h))) c.accounts.push(h);
+    }
+    return bad;
+  }
+
+  // Shift-click on an account, wherever it is, puts it in the tray instead of choosing it; again
+  // takes it out. Returns false for a plain click, so the caller does its usual thing.
+  function shiftAccount(e, handle) {
+    if (!e || !e.shiftKey || !handle) return false;
+    e.preventDefault();
+    trayNear(e);
+    const c = chordStart(false);
+    c.seeded = true;
+    const i = c.accounts.findIndex((a) => sameHandle(a, handle));
+    if (i >= 0) c.accounts.splice(i, 1);
+    else { addAccounts(c, [handle]); accountsWanted(); }
+    arm(c);
+    renderChord();
+    return true;
+  }
+
+  // The header button: an empty tray (or the open one), ready to type into.
+  function chordOpen() {
+    const c = chordStart(false);
+    c.held = true;
+    arm(c);
+    els.chordTray.classList.remove('at-top');
+    renderChord();
+    els.chordAcctIn.focus();
+  }
+
+  // What is typed but not yet a chip still counts: words in the preview and the search, handles
+  // only when searching (a half-typed handle would search the wrong account).
+  function pendingGroup() {
+    const alts = XPCXSearch.alternatives(els.chordWordIn.value);
+    return alts.length ? alts : null;
+  }
+
+  function commitWords(c) {
+    const g = pendingGroup();
+    const at = c.editing ? Math.min(c.editing.at, c.groups.length) : c.groups.length;
+    if (g) c.groups.splice(at, 0, g);
+    c.editing = null;
+    els.chordWordIn.value = '';
+  }
+
+  function commitAccounts(c) {
+    const n = c.accounts.length;
+    els.chordAcctIn.value = addAccounts(c, els.chordAcctIn.value.split(/[\s,]+/)).join(' ');
+    if (c.accounts.length > n) accountsWanted();
+  }
+
+  // Click a word chip: its text goes back into the box to change, and returns to the same place.
+  function chordEdit(i) {
+    const c = state.chord;
+    if (!c || !c.groups[i]) return;
+    if (pendingGroup()) commitWords(c);
+    const [g] = c.groups.splice(i, 1);
+    c.editing = { at: i, group: g };
+    els.chordWordIn.value = g.join(' | ');
+    renderChord();
+    els.chordWordIn.focus();
+    els.chordWordIn.setSelectionRange(els.chordWordIn.value.length, els.chordWordIn.value.length);
+  }
+
+  const chordScopeOf = (c) => (c.accounts.length ? state.chordScope : 'all');
+  function chordQueries(c) {
+    const g = pendingGroup();
+    const groups = g ? [...c.groups, g] : c.groups;
+    return XPCXSearch.wordsQueries(groups, { handles: c.accounts, scope: chordScopeOf(c) });
+  }
 
   function chordCancel() {
     state.chord = null;
+    els.chordAcctIn.value = '';
+    els.chordWordIn.value = '';
+    if (els.chordTray.contains(document.activeElement)) document.activeElement.blur();
+    chordSuggest.hide();
     renderChord();
   }
 
   function chordFire() {
     const c = state.chord;
+    if (!c) return;
+    commitWords(c);
+    commitAccounts(c);
+    const qs = chordQueries(c);
     chordCancel();
-    const q = c ? chordQuery(c) : '';
-    if (!q) return;
-    const bg = openTab(XPCXSearch.searchUrl(q));
-    showToast(`Searching X${bg ? ' in a background tab' : ''}: ${q}`);
+    if (!qs.length) return;
+    let bg = false;
+    for (const q of qs) bg = openTab(XPCXSearch.searchUrl(q));
+    showToast(qs.length > 1 ? `Searching X in ${qs.length} ${bg ? 'background ' : ''}tabs, the accounts split between them` : `Searching X${bg ? ' in a background tab' : ''}: ${qs[0]}`);
   }
 
   // Extension pages open the tab behind this one; the test page (no chrome.tabs) falls back to a new window.
@@ -1286,60 +1404,73 @@
   }
 
   function markChord() {
-    const words = state.chord ? new Set(state.chord.words) : null;
-    for (const w of document.querySelectorAll('#mx-view .w, .ctx-cloud-view .w')) w.classList.toggle('chord', Boolean(words && words.has(w.dataset.word)));
+    const words = state.chord ? new Set(state.chord.groups.flat().map((w) => w.toLowerCase())) : null;
+    for (const w of document.querySelectorAll('#mx-view .w, .ctx-cloud-view .w')) w.classList.toggle('chord', Boolean(words && words.has(String(w.dataset.word || '').toLowerCase())));
   }
 
+  function chordChip(kind, text, i, tip) {
+    const chip = el('span', 'chord-chip ' + kind);
+    const t = el(kind === 'word' ? 'button' : 'span', 'chord-t', text);
+    if (kind === 'word') {
+      t.type = 'button';
+      t.dataset.act = 'edit';
+      t.dataset.i = String(i);
+      t.title = 'Edit (| separates the alternatives)';
+    }
+    const x = el('button', 'chord-x', '✕');
+    x.type = 'button';
+    x.dataset.act = 'drop';
+    x.dataset.kind = kind;
+    x.dataset.i = String(i);
+    x.title = tip;
+    chip.append(t, x);
+    return chip;
+  }
+
+  // The chips and the scope switch are redrawn; the two text boxes are left alone, so typing and
+  // focus survive a redraw.
   function renderChord() {
     const tray = els.chordTray;
     const c = state.chord;
     markChord();
     tray.hidden = !c;
     if (!c) return;
-    tray.textContent = '';
-    const row = el('div', 'chord-row');
-    row.append(el('span', 'chord-label', 'Search X for'));
-    if (!c.words.length) row.append(el('span', 'chord-empty', 'no words yet'));
-    c.words.forEach((w, i) => {
-      const chip = el('span', 'chord-chip', w);
-      const x = el('button', 'chord-x', '✕');
-      x.type = 'button';
-      x.dataset.act = 'drop';
-      x.dataset.i = String(i);
-      x.title = `Leave out “${w}”`;
-      chip.append(x);
-      row.append(chip);
+    els.chordAccts.textContent = '';
+    c.accounts.forEach((h, i) => els.chordAccts.append(chordChip('acct', '@' + h, i, `Leave out @${h}`)));
+    els.chordWords.textContent = '';
+    c.groups.forEach((g, i) => els.chordWords.append(chordChip('word', g.join(' | '), i, `Leave out “${g.join(' | ')}”`)));
+    const n = c.accounts.length;
+    els.chordSeg.hidden = !n;
+    els.chordSeg.textContent = '';
+    CHORD_SCOPES.forEach((s, i) => {
+      if (!n) return;
+      const b = el('button', null, s.label(c.accounts));
+      b.type = 'button';
+      b.dataset.act = 'scope';
+      b.dataset.scope = s.key;
+      b.title = `${s.tip(c.accounts)} · Shift+${i + 1}`;
+      b.setAttribute('aria-pressed', String(state.chordScope === s.key));
+      els.chordSeg.append(b);
     });
-    tray.append(row);
-    const row2 = el('div', 'chord-row');
-    if (c.handle) {
-      const seg = el('span', 'chord-seg');
-      seg.setAttribute('role', 'group');
-      seg.setAttribute('aria-label', 'Whose posts');
-      CHORD_SCOPES.forEach((s, i) => {
-        const b = el('button', null, s.label(c.handle));
-        b.type = 'button';
-        b.dataset.act = 'scope';
-        b.dataset.scope = s.key;
-        b.title = `${s.tip(c.handle)} · Shift+${i + 1}`;
-        b.setAttribute('aria-pressed', String(state.chordScope === s.key));
-        seg.append(b);
-      });
-      row2.append(seg);
-    }
-    row2.append(el('span', 'grow'));
-    if (c.armed) row2.append(el('span', 'chord-note', 'Release ⇧ to search · Esc cancels'));
-    const go = el('button', 'primary', 'Search X ↗');
-    go.type = 'button';
-    go.dataset.act = 'go';
-    go.disabled = !c.words.length;
-    const x = el('button', null, 'Cancel');
-    x.type = 'button';
-    x.dataset.act = 'cancel';
-    row2.append(go, x);
-    tray.append(row2);
-    const q = el('code', 'chord-q', chordQuery(c) || ' ');
-    tray.append(q);
+    tray.classList.toggle('scope-all', Boolean(n) && state.chordScope === 'all');
+    els.chordPin.setAttribute('aria-pressed', String(state.chordPin));
+    renderChordQuery();
+  }
+
+  function renderChordQuery() {
+    const c = state.chord;
+    if (!c) return;
+    const qs = chordQueries(c);
+    els.chordGo.disabled = !qs.length;
+    els.chordQ.textContent = qs.join('\n') || ' ';
+    const notes = [];
+    if (qs.length > 1) notes.push(`Opens ${qs.length} searches`);
+    else if (qs[0] && qs[0].length > XPCXSearch.MAX_QUERY) notes.push('Long for X: it may cut this off');
+    else if (!qs.length && c.accounts.length && state.chordScope === 'others') notes.push('Add a word to search everyone else');
+    if (c.armed) notes.push('Release ⇧ to search · Esc cancels');
+    els.chordNote.textContent = notes.join(' · ');
+    els.chordNote.hidden = !notes.length;
+    els.chordNote.title = qs.length > 1 ? `X takes about ${XPCXSearch.MAX_QUERY} characters a search, so the accounts are split over ${qs.length} searches, each in its own tab` : '';
   }
 
   // Scroll an element to the top of the viewport, below the sticky header.
@@ -1673,7 +1804,7 @@
       const bar = el('span', 'bar');
       bar.style.width = Math.max(4, Math.round((value(r) / max) * 70)) + 'px';
       row.append(who, bar, el('span', 'n', value(r).toLocaleString()));
-      row.addEventListener('click', () => onPick(r));
+      row.addEventListener('click', (e) => { if (!shiftAccount(e, r.handle)) onPick(r); });
       frag.append(row);
     }
     return frag;
@@ -1998,6 +2129,7 @@
       if (d.kind === 'node') {
         const h = model.nodes[d.i].handle;
         unlight();
+        if (shiftAccount(e, h)) return;
         setFocus(state.nwFocus && state.nwFocus.toLowerCase() === h.toLowerCase() ? null : h);
       } else if (d.edge) {
         unlight();
@@ -2151,7 +2283,7 @@
     handle.className = 'handle';
     handle.textContent = '@' + post.handle;
     handle.title = 'Choose this account';
-    handle.addEventListener('click', () => setFocus(post.handle));
+    handle.addEventListener('click', (e) => shiftAccount(e, post.handle) || setFocus(post.handle));
     const time = document.createElement('time');
     time.dateTime = post.time || '';
     const link = document.createElement('a');
@@ -2184,7 +2316,7 @@
       if (h) {
         s.classList.add('to');
         s.title = (post.replyInferred && t.startsWith('reply') ? 'Taken from the post page, where X hides the “Replying to” line: it may answer another reply in the thread. ' : '') + `Choose @${h}`;
-        s.addEventListener('click', () => setFocus(h));
+        s.addEventListener('click', (e) => shiftAccount(e, h) || setFocus(h));
       }
       header.append(s);
     }
@@ -2225,7 +2357,7 @@
         hh.className = 'h to';
         hh.textContent = '@' + qHandle;
         hh.title = `Choose @${qHandle}`;
-        hh.addEventListener('click', () => setFocus(qHandle));
+        hh.addEventListener('click', (e) => shiftAccount(e, qHandle) || setFocus(qHandle));
         by.append(hh);
       }
       if (orig && orig.time) by.append(sep(), fmtDay(orig.time));
@@ -2560,7 +2692,8 @@
       }
       if (hasRegex) tr.title = `${a.matches.toLocaleString()} of ${a.posts.toLocaleString()} posts match`;
       tr.append(tdA, tdP, tdR);
-      tr.addEventListener('click', () => {
+      tr.addEventListener('click', (e) => {
+        if (shiftAccount(e, a.handle)) return;
         const already = els.author.value.trim().toLowerCase() === '@' + a.handle.toLowerCase();
         setFocus(already ? null : a.handle);
       });
@@ -2578,7 +2711,8 @@
 
   // Attach a suggestion list to a text input. items() returns [{ handle, name, ... }] in the order
   // to prefer, meta(a) is the grey text on the right, onPick(handle) runs when one is chosen and
-  // onClear() when Escape empties the input.
+  // onClear() when Escape empties the input. `empty` is the line shown when nothing matches, or a
+  // function of what was typed.
   function makeSuggest({ input, list, items, meta, onPick, onClear, empty, showAll = false }) {
     let sel = -1;
     const matches = (a, q) => (a.handle || '').toLowerCase().includes(q) || (a.name || '').toLowerCase().includes(q);
@@ -2588,6 +2722,7 @@
       const rank = (a) => {
         const h = (a.handle || '').toLowerCase();
         const n = (a.name || '').toLowerCase();
+        if (h === q) return -1;
         if (h.startsWith(q)) return 0;
         if (n.startsWith(q)) return 1;
         if (n.split(/\s+/).some((w) => w.startsWith(q))) return 2;
@@ -2617,7 +2752,7 @@
       if (!found.length) {
         const li = document.createElement('li');
         li.className = 'none';
-        li.textContent = empty;
+        li.textContent = typeof empty === 'function' ? empty(find) : empty;
         list.append(li);
       }
       found.forEach((a, i) => {
@@ -2652,7 +2787,8 @@
         e.preventDefault();
         if (open) select(sel - 1);
       } else if (e.key === 'Enter') {
-        if (!open || !opts.length) return;
+        // An empty box picks only a suggestion moved to with the arrows.
+        if (!open || !opts.length || (sel < 0 && !input.value.trim())) return;
         e.preventDefault();
         pick(opts[sel >= 0 ? sel : 0].dataset.handle);
       } else if (e.key === 'Escape') {
@@ -2664,12 +2800,14 @@
     return { render, hide };
   }
 
+  const accountMeta = (a) => (a.posts ? `${a.posts.toLocaleString()} post${a.posts === 1 ? '' : 's'}` : 'no posts captured') + (a.received ? ` · ${a.received.toLocaleString()} received` : '');
+
   // The account chip suggests every captured user, then every account that appears only through an interaction.
   const authorSuggest = makeSuggest({
     input: els.author,
     list: els.authorSuggest,
     items: () => state.chipAccounts || [],
-    meta: (a) => (a.posts ? `${a.posts.toLocaleString()} post${a.posts === 1 ? '' : 's'}` : 'no posts captured') + (a.received ? ` · ${a.received.toLocaleString()} received` : ''),
+    meta: accountMeta,
     onPick: (handle) => setFocus(handle),
     onClear: () => setFocus(null),
     empty: 'No account matches',
@@ -2677,6 +2815,29 @@
   });
   // Typing replaces the chosen account rather than appending to it.
   els.author.addEventListener('focus', () => els.author.select());
+
+  // The tray's account box suggests the same accounts, less those already in the tray; a handle
+  // never captured is added as typed.
+  const chordSuggest = makeSuggest({
+    input: els.chordAcctIn,
+    list: els.chordSuggest,
+    items: () => (state.chipAccounts || []).filter((a) => !state.chord || !state.chord.accounts.some((h) => sameHandle(h, a.handle))),
+    meta: accountMeta,
+    onPick: (handle) => {
+      if (!state.chord) return;
+      addAccounts(state.chord, [handle]);
+      accountsWanted();
+      els.chordAcctIn.value = '';
+      renderChord();
+      chordSuggest.render();
+    },
+    onClear: () => {},
+    empty: (find) => {
+      const h = find.replace(/^@/, '');
+      return HANDLE_RE.test(h) ? `Not captured · Enter adds @${h}` : 'Not a handle: letters, digits and _ only';
+    },
+    showAll: true,
+  });
 
   // ---------------------------------------------------------------------------
   // Data: load, export, import, delete
@@ -2836,40 +2997,109 @@
   els.nwPattern.addEventListener('change', () => { renderNetworkSummary(state.filteredNoAuthor); renderNetwork(); renderContext(); saveState(); });
   els.nwTheme.addEventListener('change', saveState);
   els.nwUnfocus.addEventListener('click', () => setFocus(null));
-  // Shift-click chord: gather words while Shift is down, search when it comes up.
+  // The X search tray: gather accounts and words while Shift is down, search when it comes up.
+  const SHIFT_PICK = '.w, .handle, .tag.to, .h.to, .ctx-row, #author-rows tr';
   document.addEventListener('mousedown', (e) => {
-    if (e.shiftKey && e.target.closest && e.target.closest('.w')) e.preventDefault(); // no text selection
+    if (e.shiftKey && e.target.closest && e.target.closest(SHIFT_PICK)) e.preventDefault(); // no text selection
   });
   document.addEventListener('keyup', (e) => {
     // Any key coming up with Shift no longer held counts, not just e.key === 'Shift': some
     // keyboards and remote-control tools report the modifier with an empty key name.
-    if (!state.chord || !state.chord.armed || (e.key !== 'Shift' && e.shiftKey)) return;
-    if (state.chord.words.length) chordFire(); else chordCancel();
+    const c = state.chord;
+    if (!c || !c.armed || (e.key !== 'Shift' && e.shiftKey)) return;
+    if (chordQueries(c).length) chordFire();
+    else if (c.accounts.length || c.groups.length) { c.held = true; arm(c); renderChordQuery(); } // e.g. accounts but "Everyone else": wait for a word
+    else chordCancel();
   });
   document.addEventListener('keydown', (e) => {
     if (!state.chord || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; // Shift+1 there is "!"
     const i = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
-    if (i < 0 || !state.chord.handle) return;
+    if (i < 0 || !state.chord.accounts.length) return;
     e.preventDefault();
     state.chordScope = CHORD_SCOPES[i].key;
     renderChord();
     saveState();
   });
   // Shift may come up in another window; then the tray waits for its button instead.
-  window.addEventListener('blur', () => { if (state.chord && state.chord.armed) { state.chord.armed = false; renderChord(); } });
+  window.addEventListener('blur', () => { if (state.chord && state.chord.armed) { state.chord.armed = false; renderChordQuery(); } });
+  // Touching the tray holds it open: Shift is needed to type | and capitals, and a click on a chip
+  // should not send the search. Only the note is redrawn here, so the click still lands.
+  const holdChord = () => {
+    const c = state.chord;
+    if (!c || c.held) return;
+    c.held = true;
+    arm(c);
+    renderChordQuery();
+  };
+  els.chordTray.addEventListener('pointerdown', holdChord);
+  els.chordTray.addEventListener('focusin', holdChord);
   els.chordTray.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]');
-    if (!b || !state.chord) return;
+    const c = state.chord;
+    if (!b || !c) return;
     const act = b.dataset.act;
-    if (act === 'drop') { state.chord.words.splice(Number(b.dataset.i), 1); renderChord(); }
+    if (act === 'drop') { (b.dataset.kind === 'acct' ? c.accounts : c.groups).splice(Number(b.dataset.i), 1); renderChord(); }
+    else if (act === 'edit') chordEdit(Number(b.dataset.i));
     else if (act === 'scope') { state.chordScope = b.dataset.scope; renderChord(); saveState(); }
+    else if (act === 'pin') { state.chordPin = !state.chordPin; arm(c); renderChord(); saveState(); }
     else if (act === 'go') chordFire();
     else if (act === 'cancel') chordCancel();
   });
+  // Words: Enter makes the typed text a chip (| inside it for either), or searches when the box is
+  // empty. Escape puts an edited chip back as it was.
+  els.chordWordIn.addEventListener('input', renderChordQuery);
+  els.chordWordIn.addEventListener('keydown', (e) => {
+    const c = state.chord;
+    if (!c) return;
+    const v = els.chordWordIn.value;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (v.trim() || c.editing) { commitWords(c); renderChord(); } else chordFire();
+    } else if (e.key === 'Escape' && (v || c.editing)) {
+      e.preventDefault();
+      if (c.editing) c.groups.splice(Math.min(c.editing.at, c.groups.length), 0, c.editing.group);
+      c.editing = null;
+      els.chordWordIn.value = '';
+      renderChord();
+    } else if (e.key === 'Backspace' && !v && c.groups.length) {
+      c.groups.pop();
+      renderChord();
+    }
+  });
+  // Accounts: a suggestion is picked by the suggestion list; otherwise Enter, a space or a comma
+  // adds what was typed (handles hold none of those, so a pasted list splits too).
+  els.chordAcctIn.addEventListener('input', () => {
+    const c = state.chord;
+    const v = els.chordAcctIn.value;
+    if (!c || !/[\s,]/.test(v)) return;
+    const parts = v.split(/[\s,]+/);
+    const rest = parts.pop();
+    const n = c.accounts.length;
+    const bad = addAccounts(c, parts);
+    if (c.accounts.length > n) accountsWanted();
+    els.chordAcctIn.value = [...bad, rest].filter(Boolean).join(' ');
+    renderChord();
+    chordSuggest.render();
+  });
+  els.chordAcctIn.addEventListener('keydown', (e) => {
+    const c = state.chord;
+    if (!c || e.defaultPrevented) return;
+    const v = els.chordAcctIn.value;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (v.trim()) { commitAccounts(c); renderChord(); chordSuggest.render(); } else chordFire();
+    } else if (e.key === 'Backspace' && !v && c.accounts.length) {
+      c.accounts.pop();
+      renderChord();
+      chordSuggest.render();
+    }
+  });
+  els.chordOpen.addEventListener('click', chordOpen);
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (state.chord) chordCancel();
+    if (state.chord && !e.defaultPrevented) chordCancel(); // not when Escape only closed a list or cleared a box
     if (!els.nwCard.hidden) closeCard();
     els.selTools.hidden = true;
     for (const m of document.querySelectorAll('details.menu[open]')) m.open = false;
