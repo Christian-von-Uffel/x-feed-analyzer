@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture: mock X timeline</title>
+  <link rel="stylesheet" href="../content.css">
+  <style>
+    body { margin: 0; background: #000; color: #e7e9ea; font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .col { max-width: 600px; margin: 0 auto; border-left: 1px solid #2f3336; border-right: 1px solid #2f3336; min-height: 100vh; }
+    [data-testid="cellInnerDiv"] { border-bottom: 1px solid #2f3336; }
+    article { padding: 12px 16px; display: flex; gap: 10px; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: #333; flex: none; }
+    .body { flex: 1; min-width: 0; }
+    [data-testid="User-Name"] { display: flex; gap: 4px; align-items: center; }
+    [data-testid="User-Name"] a { color: inherit; text-decoration: none; }
+    [data-testid="User-Name"] .h { color: #71767b; }
+    [data-testid="tweetText"] { white-space: pre-wrap; margin: 4px 0 10px; }
+    [data-testid="tweetText"] img, [data-testid="User-Name"] img { width: 1.2em; height: 1.2em; vertical-align: -0.2em; }
+    [data-testid="socialContext"] { color: #71767b; font-size: 13px; font-weight: 700; }
+    .reply { color: #71767b; font-size: 14px; margin: 2px 0; }
+    div[role="link"] { border: 1px solid #2f3336; border-radius: 12px; padding: 10px; margin: 8px 0; }
+    div[role="group"] { display: flex; gap: 40px; color: #71767b; }
+    div[role="group"] button, div[role="group"] a { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
+    .promo { color: #71767b; font-size: 13px; }
+    .toolbar { position: fixed; top: 10px; left: 10px; display: flex; gap: 6px; }
+    .toolbar button { padding: 6px 10px; border-radius: 6px; border: 1px solid #444; background: #16181c; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="add-more">Append 3 more posts</button>
+    <button id="bump">Bump like counts</button>
+  </div>
+  <div class="col" id="timeline">
+
+    <!-- 1: plain post with em dash and emoji image -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/alice" role="link"><span>Alice Chen <img alt="✨" src="data:,"></span></a>
+            <a href="/alice" role="link" class="h"><span>@alice</span></a>
+            <span class="h">·</span>
+            <a href="/alice/status/1001" role="link" class="h"><time datetime="2026-09-17T10:00:00.000Z">Sep 17</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>It's not about the tool — it's about the workflow. Ship it </span><img alt="🚀" src="data:,"></div>
+          <div role="group" aria-label="12 replies, 3 reposts, 45 likes, 2 bookmarks, 1234 views">
+            <button data-testid="reply"><span data-testid="app-text-transition-container">12</span></button>
+            <button data-testid="retweet"><span data-testid="app-text-transition-container">3</span></button>
+            <button data-testid="like"><span data-testid="app-text-transition-container">45</span></button>
+            <a href="/alice/status/1001/analytics"><span data-testid="app-text-transition-container">1.2K</span></a>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 2: repost with a quoted post; the quoted text has a dash but the outer does not -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="socialContext"><a href="/bob"><span>Bob reposted</span></a></div>
+          <div data-testid="User-Name">
+            <a href="/carol_writes" role="link"><span>Carol</span></a>
+            <a href="/carol_writes" role="link" class="h"><span>@carol_writes</span></a>
+            <span class="h">·</span>
+            <a href="/carol_writes/status/1002" role="link" class="h"><time datetime="2026-09-16T08:30:00.000Z">Sep 16</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Quoting this because it is exactly right. Plain sentence, no fancy punctuation.</span></div>
+          <div role="link" tabindex="0">
+            <div data-testid="User-Name">
+              <a href="/dave" role="link"><span>Dave</span></a>
+              <a href="/dave" role="link" class="h"><span>@dave</span></a>
+              <span class="h">·</span>
+              <a href="/dave/status/999" role="link" class="h"><time datetime="2026-09-15T08:30:00.000Z">Sep 15</time></a>
+            </div>
+            <div data-testid="tweetText" lang="en"><span>The quoted one — with an em dash that must not count for Carol.</span></div>
+          </div>
+          <div role="group" aria-label="1 reply, 8 reposts, 90 likes, 5000 views">
+            <button data-testid="reply"><span data-testid="app-text-transition-container">1</span></button>
+            <button data-testid="retweet"><span data-testid="app-text-transition-container">8</span></button>
+            <button data-testid="like"><span data-testid="app-text-transition-container">90</span></button>
+            <a href="/carol_writes/status/1002/analytics"><span data-testid="app-text-transition-container">5K</span></a>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 3: reply with multiline text and two em dashes; metrics only via buttons (no group aria-label) -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/erin" role="link"><span>Erin</span></a>
+            <a href="/erin" role="link" class="h"><span>@erin</span></a>
+            <span class="h">·</span>
+            <a href="/erin/status/1003" role="link" class="h"><time datetime="2026-09-18T01:15:00.000Z">2h</time></a>
+          </div>
+          <div class="reply"><span>Replying to </span><a href="/alice">@alice</a></div>
+          <div data-testid="tweetText" lang="en"><span>Three things matter here — speed, clarity, and taste.
+Everything else is noise — really.</span></div>
+          <div role="group">
+            <button data-testid="reply"><span data-testid="app-text-transition-container"></span></button>
+            <button data-testid="retweet"><span data-testid="app-text-transition-container">2</span></button>
+            <button data-testid="like"><span data-testid="app-text-transition-container">1.5K</span></button>
+            <a href="/erin/status/1003/analytics"><span data-testid="app-text-transition-container">22.3K</span></a>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 4: promoted post: no permalink time, must be skipped -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/brand" role="link"><span>Brand</span></a>
+            <a href="/brand" role="link" class="h"><span>@brand</span></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Buy our thing — now 20% off.</span></div>
+          <div class="promo">Ad</div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 5: post with media and a "Show more" truncation, no dash -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/alice" role="link"><span>Alice Chen <img alt="✨" src="data:,"></span></a>
+            <a href="/alice" role="link" class="h"><span>@alice</span></a>
+            <span class="h">·</span>
+            <a href="/alice/status/1005" role="link" class="h"><time datetime="2026-09-14T12:00:00.000Z">Sep 14</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>A long post that got cut off by the timeline preview, so we only see the first part of it and the rest is</span></div>
+          <div data-testid="tweet-text-show-more-link">Show more</div>
+          <div data-testid="tweetPhoto" style="height:60px;background:#222;border-radius:8px"></div>
+          <div role="group" aria-label="0 replies, 0 reposts, 7 likes, 300 views">
+            <button data-testid="reply"><span data-testid="app-text-transition-container"></span></button>
+            <button data-testid="retweet"><span data-testid="app-text-transition-container"></span></button>
+            <button data-testid="like"><span data-testid="app-text-transition-container">7</span></button>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 6: video post that @mentions alice (anchor) and links to a site (anchor text is the display URL) -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/frank" role="link"><span>Frank</span></a>
+            <a href="/frank" role="link" class="h"><span>@frank</span></a>
+            <span class="h">·</span>
+            <a href="/frank/status/1006" role="link" class="h"><time datetime="2026-09-13T09:00:00.000Z">Sep 13</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Watch this with </span><a href="/alice">@alice</a><span> and read </span><a href="https://t.co/abc123" target="_blank" rel="noopener noreferrer nofollow"><span>example.com/why-it-matters</span><span>…</span></a></div>
+          <div data-testid="videoPlayer" style="height:60px;background:#222;border-radius:8px"><video></video></div>
+          <div role="group" aria-label="2 replies, 1 repost, 30 likes, 900 views"></div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 7: link-preview card (no link in the text), two images -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/grace" role="link"><span>Grace</span></a>
+            <a href="/grace" role="link" class="h"><span>@grace</span></a>
+            <span class="h">·</span>
+            <a href="/grace/status/1007" role="link" class="h"><time datetime="2026-09-12T09:00:00.000Z">Sep 12</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Two photos and a card.</span></div>
+          <div data-testid="tweetPhoto" style="height:40px;background:#222;border-radius:8px"><img alt="Image" src="data:,"></div>
+          <div data-testid="tweetPhoto" style="height:40px;background:#222;border-radius:8px"><img alt="Image" src="data:,"></div>
+          <div data-testid="card.wrapper"><a href="https://t.co/card1" rel="noopener noreferrer nofollow"><div><span>A headline</span></div><div><span>From news.example.org</span></div></a></div>
+          <div role="group" aria-label="0 replies, 0 reposts, 4 likes, 120 views"></div>
+        </div>
+      </article>
+    </div>
+
+    <!-- 8: erin quotes alice; the quote card has no anchors (as on x.com), only text -->
+    <div data-testid="cellInnerDiv">
+      <article role="article" data-testid="tweet" tabindex="0">
+        <div class="avatar"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <a href="/erin" role="link"><span>Erin</span></a>
+            <a href="/erin" role="link" class="h"><span>@erin</span></a>
+            <span class="h">·</span>
+            <a href="/erin/status/1008" role="link" class="h"><time datetime="2026-09-11T09:00:00.000Z">Sep 11</time></a>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>This — exactly this.</span></div>
+          <div role="link" tabindex="0">
+            <div data-testid="User-Name"><span>Alice Chen <img alt="✨" src="data:,"></span><span class="h">@alice</span><span class="h">·</span><span class="h">Sep 14</span></div>
+            <div data-testid="tweetText" lang="en"><span>A long post that got cut off by the timeline preview</span></div>
+            <div data-testid="tweetPhoto" style="height:30px;background:#222;border-radius:8px"><img alt="Image" src="data:,"></div>
+          </div>
+          <div role="group" aria-label="3 replies, 2 reposts, 40 likes, 700 views"></div>
+        </div>
+      </article>
+    </div>
+
+  </div>
+
+  <script src="../db.js"></script>
+  <script src="shim.js"></script>
+  <script src="../search.js"></script>
+  <script src="../content.js"></script>
+  <script>
+    // Simulate X appending posts as you scroll.
+    let n = 2000;
+    const dashy = ['Honestly — this is the way.', 'No dashes in this one at all.', 'Look — twice — the dash appears.'];
+    document.getElementById('add-more').addEventListener('click', () => {
+      for (let i = 0; i < 3; i++) {
+        n++;
+        const handle = i === 1 ? 'erin' : 'frank';
+        const cell = document.createElement('div');
+        cell.dataset.testid = 'cellInnerDiv';
+        cell.innerHTML = `
+          <article role="article" data-testid="tweet" tabindex="0">
+            <div class="avatar"></div>
+            <div class="body">
+              <div data-testid="User-Name">
+                <a href="/${handle}" role="link"><span>${handle[0].toUpperCase() + handle.slice(1)}</span></a>
+                <a href="/${handle}" role="link" class="h"><span>@${handle}</span></a>
+                <span class="h">·</span>
+                <a href="/${handle}/status/${n}" role="link" class="h"><time datetime="2026-09-18T0${i}:00:00.000Z">now</time></a>
+              </div>
+              <div data-testid="tweetText" lang="en"><span>${dashy[i]}</span></div>
+              <div role="group" aria-label="${i} replies, ${i * 2} likes, ${100 + i} views"></div>
+            </div>
+          </article>`;
+        document.getElementById('timeline').appendChild(cell);
+      }
+    });
+    document.getElementById('bump').addEventListener('click', () => {
+      document.querySelectorAll('div[role="group"][aria-label]').forEach((g) => {
+        g.setAttribute('aria-label', g.getAttribute('aria-label').replace(/(\d+) likes/, (m, d) => (Number(d) + 10) + ' likes'));
+      });
+    });
+  </script>
+</body>
+</html>

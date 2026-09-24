@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Feed Analyzer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot"></span> X Feed Analyzer</div>
+    <div class="kpis">
+      <span><b id="kpi-posts">0</b> posts</span>
+      <span><b id="kpi-authors">0</b> authors</span>
+    </div>
+    <nav class="views" aria-label="Main column">
+      <a href="#posts" data-section="posts" title="The searchable list of captured posts">Posts</a>
+      <a href="#network" data-section="network" title="Who quotes, replies to and reposts whom, at full width">Network map</a>
+      <a href="#compare" data-section="compare" title="Word clouds, co-mentions and the author × keyword heat-map, at full width">Topics</a>
+    </nav>
+    <div class="actions">
+      <button id="new-pill" class="pill" hidden></button>
+      <button id="refresh" title="Reload from local storage">Refresh</button>
+      <details class="menu export-menu" id="export-menu">
+        <summary title="Download the current result set (filter first, then export)">Export</summary>
+        <div class="popover menu-list">
+          <button type="button" id="export-json" title="The current result set as JSON, re-importable here">JSON</button>
+          <button type="button" id="export-csv" title="The current result set as CSV, one row per post">CSV</button>
+        </div>
+      </details>
+      <details class="menu more-menu" id="more-menu">
+        <summary title="Theme and import" aria-label="More">···</summary>
+        <div class="popover menu-list more-list">
+          <label class="opt-row" title="Page colour theme"><span class="l">theme</span>
+            <select id="theme">
+              <option value="light" selected>light</option>
+              <option value="dark">dark</option>
+              <option value="auto">auto</option>
+            </select>
+          </label>
+          <label class="opt-row import" title="Merge a previously exported JSON file into the catalogue"><span class="l">Import JSON…</span><input type="file" id="import" accept=".json,application/json" hidden></label>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <section class="search">
+    <div class="scope">
+      <div class="search-box">
+        <input id="pattern" type="text" placeholder="Search posts (regex on · press / to focus)" spellcheck="false" autocomplete="off" autofocus>
+        <div class="toggles" role="group" aria-label="Search options">
+          <button type="button" class="toggle" data-opt="matchCase" aria-pressed="false" title="Match Case (Alt+C)"><span class="glyph">Aa</span></button>
+          <button type="button" class="toggle" data-opt="wholeWord" aria-pressed="false" title="Match Whole Word (Alt+W)"><span class="glyph ww">ab</span></button>
+          <button type="button" class="toggle" data-opt="regex" aria-pressed="true" title="Use Regular Expression (Alt+R)"><span class="glyph mono">.*</span></button>
+          <details class="menu search-menu" id="search-menu">
+            <summary class="toggle" title="Ready-made patterns and regular-expression flags"><span class="glyph">≡</span></summary>
+            <div class="popover">
+              <label class="opt-col"><b>Ready-made patterns</b>
+                <select id="preset" title="Patterns for common writing tells; choosing one fills the search box"><option value="">Choose a pattern…</option></select>
+              </label>
+              <div id="regex-flags" class="flags">
+                <label class="opt"><input type="checkbox" data-opt="multiline"><span><b>Multiline</b><code>^</code> and <code>$</code> also match at line breaks inside a post, not only at its start and end.</span></label>
+                <label class="opt"><input type="checkbox" data-opt="dotAll"><span><b>Dot matches newlines</b><code>.</code> can match a line break, so one pattern can span several lines.</span></label>
+                <label class="opt"><input type="checkbox" data-opt="unicode"><span><b>Unicode</b>Enables classes like <code>\p{Emoji}</code> and treats emoji as single characters.</span></label>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div class="chip-wrap author-find" title="The account the page is about: the list shows their posts, the pane their network, the clouds outline their tile. Type a name or @handle; plain text also filters by name.">
+        <span class="chip-glyph" aria-hidden="true">◉</span>
+        <input id="author" type="text" placeholder="any account" spellcheck="false" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="author-suggest" aria-label="Account">
+        <a id="author-x" class="chip-x" target="_blank" rel="noopener" title="Open this account on X" hidden>X ↗</a>
+        <button type="button" id="author-clear" class="chip-clear" title="Show every account (Escape)" hidden>✕</button>
+        <ul id="author-suggest" class="suggest" role="listbox" hidden></ul>
+      </div>
+      <label class="dates" title="Posts dated within this range">dates <input id="from" type="date" aria-label="From date"> <span class="dash">–</span> <input id="to" type="date" aria-label="To date"></label>
+      <div id="filter-chips" class="chips" hidden></div>
+    </div>
+    <div id="error" class="error" hidden></div>
+  </section>
+
+  <main class="layout">
+    <aside class="rail" id="rail" aria-label="Filters">
+      <section class="facet" id="facet-types">
+        <h2>Post types <span id="types-summary" class="sub" title="Tick several to show any of them; the number is how many of the current results are of that kind"></span></h2>
+        <div class="types" role="group" aria-label="Post type">
+          <label class="opt-row all"><input type="checkbox" id="types-all" checked><span class="l">all posts</span><b class="n" id="types-all-n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="reply"><span class="l">replies</span><b class="n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="repost"><span class="l">reposts</span><b class="n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="quote"><span class="l">quotes</span><b class="n"></b></label>
+          <label class="opt-row" title="Neither a reply, a repost nor a quote"><input type="checkbox" class="type" data-type="original"><span class="l">original posts</span><b class="n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="image"><span class="l">images</span><b class="n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="video"><span class="l">videos</span><b class="n"></b></label>
+          <label class="opt-row"><input type="checkbox" class="type" data-type="link"><span class="l">links</span><b class="n"></b></label>
+        </div>
+        <p class="hint" id="type-hint" hidden></p>
+      </section>
+
+      <section class="facet" id="facet-thresholds">
+        <h2>Thresholds</h2>
+        <div class="ranges" title="Drag to set a minimum, or switch a slider to “top %” to keep a share of the posts instead: top 50% of likes keeps the better-liked half of whatever the pattern and the other filters leave, and the cutoff moves with them. The bars show how those posts are spread (so with an account chosen, this is that account's range); p50 / p90 / p99 mark the median and the top 10% and 1%. The readout says how many posts pass.">
+          <div class="range" data-key="likes" title="Posts with at least this many likes">
+            <span class="rl">min likes</span>
+            <div class="track"><svg class="hist" viewBox="0 0 40 20" preserveAspectRatio="none" aria-hidden="true"></svg><div class="ticks"></div><input type="range" class="thumb" min="0" max="1000" step="1" value="0" aria-label="Minimum likes"></div>
+            <span class="seg rmode" role="radiogroup" aria-label="Threshold kind for likes"><button type="button" role="radio" data-mode="min" aria-checked="true" aria-label="At least" title="At least: an exact minimum">≥</button><button type="button" role="radio" data-mode="top" aria-checked="false" aria-label="Top percent" title="Top %: the top share of the posts passing the other filters (pattern included), by likes. The cutoff follows the filters.">%</button></span>
+            <input id="min-likes" type="number" min="0" step="1" placeholder="0" aria-label="Minimum likes, exact value">
+            <span class="ro"></span>
+          </div>
+          <div class="range" data-key="reposts" title="Posts with at least this many reposts (retweets)">
+            <span class="rl">min reposts</span>
+            <div class="track"><svg class="hist" viewBox="0 0 40 20" preserveAspectRatio="none" aria-hidden="true"></svg><div class="ticks"></div><input type="range" class="thumb" min="0" max="1000" step="1" value="0" aria-label="Minimum reposts"></div>
+            <span class="seg rmode" role="radiogroup" aria-label="Threshold kind for reposts"><button type="button" role="radio" data-mode="min" aria-checked="true" aria-label="At least" title="At least: an exact minimum">≥</button><button type="button" role="radio" data-mode="top" aria-checked="false" aria-label="Top percent" title="Top %: the top share of the posts passing the other filters (pattern included), by reposts. The cutoff follows the filters.">%</button></span>
+            <input id="min-reposts" type="number" min="0" step="1" placeholder="0" aria-label="Minimum reposts, exact value">
+            <span class="ro"></span>
+          </div>
+          <div class="range" data-key="chars" title="Posts of at least this many characters. A post X collapsed behind “Show more” counts as long whatever was captured of it.">
+            <span class="rl">min chars</span>
+            <div class="track"><svg class="hist" viewBox="0 0 40 20" preserveAspectRatio="none" aria-hidden="true"></svg><div class="ticks"></div><input type="range" class="thumb" min="0" max="1000" step="1" value="0" aria-label="Minimum characters"></div>
+            <span class="seg rmode" role="radiogroup" aria-label="Threshold kind for characters"><button type="button" role="radio" data-mode="min" aria-checked="true" aria-label="At least" title="At least: an exact minimum">≥</button><button type="button" role="radio" data-mode="top" aria-checked="false" aria-label="Top percent" title="Top %: the top share of the posts passing the other filters (pattern included), by characters. The cutoff follows the filters.">%</button></span>
+            <input id="min-chars" type="number" min="0" step="100" placeholder="0" aria-label="Minimum characters, exact value">
+            <span class="ro"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="facet authors" id="facet-authors">
+        <h2>By author <label class="minposts" title="Hide authors with fewer captured posts than this, here and in the author views">min posts <input id="min-posts" type="number" min="1" step="1" value="3"></label></h2>
+        <p class="hint" id="authors-hint">Rate = share of an author's captured posts that match the pattern. Click a row to choose that account.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Author</th><th class="num">Posts</th><th class="num">Rate</th></tr>
+            </thead>
+            <tbody id="author-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </aside>
+
+    <section class="center">
+      <section class="results" id="posts">
+        <div class="results-head">
+          <div class="results-line">
+            <span id="result-count">Loading…</span>
+            <button type="button" id="results-back" class="pill back" hidden title="Undo the click: restore the account and search pattern from before"></button>
+            <button type="button" id="pick-pill" class="pill back" hidden title="Stop showing only the posts behind this connection"></button>
+          </div>
+          <div id="list-mode" class="seg" role="radiogroup" aria-label="Which posts to list for the chosen account" hidden>
+            <button type="button" role="radio" data-mode="by" aria-checked="true">By them</button>
+            <button type="button" role="radio" data-mode="interactions" aria-checked="false">Interactions with them</button>
+          </div>
+          <div id="sort" class="seg" role="radiogroup" aria-label="Sort order">
+            <button type="button" role="radio" data-sort="newest" aria-checked="false" title="Newest first">Newest</button>
+            <button type="button" role="radio" data-sort="oldest" aria-checked="false" title="Oldest first">Oldest</button>
+            <button type="button" role="radio" data-sort="likes" aria-checked="false" title="Most likes first">Likes</button>
+            <button type="button" role="radio" data-sort="views" aria-checked="false" title="Most views first">Views</button>
+            <button type="button" role="radio" data-sort="longest" aria-checked="false" title="Longest first, by captured length; a post collapsed behind “Show more” sorts by its preview">Longest</button>
+            <button type="button" role="radio" data-sort="hits" aria-checked="false" class="for-pattern" title="Most matches of the pattern first">Matches</button>
+            <button type="button" role="radio" data-sort="captured" aria-checked="true" title="Most recently captured first">Captured</button>
+          </div>
+        </div>
+        <div id="list"></div>
+        <div id="empty" class="empty" hidden></div>
+        <button id="more" class="more" hidden>Show more</button>
+      </section>
+
+      <section class="expanded" id="expanded" hidden>
+        <div class="expanded-head">
+          <h2 id="expanded-title">Network map</h2>
+          <button type="button" id="expanded-close" class="pill back" title="Show the posts again; the map stays in the pane">← Back to posts</button>
+        </div>
+        <div id="center-host"></div>
+      </section>
+    </section>
+
+    <aside class="context" id="context" aria-label="Account and topics">
+      <div class="seg ctx-tabs" role="tablist" aria-label="Context">
+        <button type="button" role="tab" data-tab="account" aria-selected="true" title="The chosen account's network and amplifiers, or everyone's">Account</button>
+        <button type="button" role="tab" data-tab="topics" aria-selected="false" title="Word clouds, co-mentions and the heat map">Topics</button>
+      </div>
+
+      <div class="ctx-panel" id="ctx-account">
+        <div id="nw-host">
+          <div class="network compact" id="network">
+            <div class="network-body">
+              <p class="nw-summary" id="nw-summary">who quotes, replies to and reposts whom</p>
+              <div class="nw-pick">
+                <span id="nw-focus" class="nw-focus-line">Everyone</span>
+                <button type="button" id="nw-choose" class="link-btn" title="Choose an account in the bar at the top: the map redraws around it">Choose an account ↑</button>
+                <button type="button" id="nw-unfocus" class="pill" hidden title="Back to the map of everyone">✕ Everyone</button>
+                <span id="nw-capture" class="nw-capture" hidden></span>
+              </div>
+              <div id="nw-error" class="error" hidden></div>
+              <div class="nw-stage">
+                <div id="nw-view" class="nw-view"></div>
+                <div id="nw-tip" class="nw-tip" hidden></div>
+                <div id="nw-card" class="nw-card" hidden></div>
+              </div>
+              <div class="nw-controls">
+                <div class="nw-types" role="group" aria-label="Interaction types">
+                  <label class="chk" title="A → B when A quote-posts B"><input type="checkbox" data-nw-type="quote" checked><i class="sw quote"></i>quotes</label>
+                  <label class="chk" title="A → B when A replies to B (from the “Replying to” line)"><input type="checkbox" data-nw-type="reply" checked><i class="sw reply"></i>replies</label>
+                  <label class="chk" title="A → B when A reposts B"><input type="checkbox" data-nw-type="repost" checked><i class="sw repost"></i>reposts</label>
+                  <label class="chk" title="A → B when A @mentions B in the text (not the reply line or the quoted post)"><input type="checkbox" data-nw-type="mention"><i class="sw mention"></i>mentions</label>
+                </div>
+                <label class="x-only" title="Least posts behind a connection for it to be drawn">min posts <input id="nw-min" type="number" min="1" step="1" value="1"></label>
+                <label class="x-only" title="How many accounts to draw (the most interacted-with first)">accounts <input id="nw-nodes" type="number" min="5" max="200" step="5" value="60"></label>
+                <label class="chk x-only" title="Count only posts that match the search pattern above"><input type="checkbox" id="nw-pattern"> only posts matching the pattern</label>
+                <span class="mx-actions">
+                  <button type="button" id="nw-expand" class="c-only" title="Show the map at full width in the main column, with its controls">Expand map</button>
+                  <button type="button" id="nw-fit" class="x-only" title="Reset pan and zoom">Fit</button>
+                  <details class="menu export-menu x-only" id="nw-export">
+                    <summary title="Download the map as an image, or its numbers as CSV">Export</summary>
+                    <div class="popover export-opts">
+                      <input id="nw-title" type="text" placeholder="Image title (optional)" spellcheck="false" aria-label="Image title">
+                      <label title="Colours of the downloaded image">image theme
+                        <select id="nw-theme">
+                          <option value="auto">as the page</option>
+                          <option value="light">light</option>
+                          <option value="dark">dark</option>
+                        </select>
+                      </label>
+                      <div class="menu-list">
+                        <button type="button" id="nw-svg" title="Download the map as SVG (1080 × 1080)">SVG image</button>
+                        <button type="button" id="nw-png" title="Download the map as PNG (2160 × 2160)">PNG image</button>
+                        <button type="button" id="nw-csv" title="One row per account: interactions received and sent, by type">Accounts CSV</button>
+                        <button type="button" id="nw-edges-csv" title="One row per connection: from, to, type, posts">Connections CSV</button>
+                      </div>
+                    </div>
+                  </details>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="ctx-note" id="nw-away" hidden>The map is in the main column.</p>
+        <div id="acct-details" class="acct-details"></div>
+      </div>
+
+      <div class="ctx-panel" id="ctx-topics" hidden>
+        <div id="mx-host">
+          <div class="matrix compact" id="matrix" data-view="authors">
+            <div class="matrix-body">
+              <div class="matrix-controls">
+                <div class="mx-tabs" role="tablist" aria-label="View">
+                  <button type="button" class="mx-tab" role="tab" data-view="authors" aria-selected="true" title="One word cloud per author">Author clouds</button>
+                  <button type="button" class="mx-tab" role="tab" data-view="term" aria-selected="false" title="A word cloud of every post that mentions the term">Term cloud</button>
+                  <button type="button" class="mx-tab" role="tab" data-view="comention" aria-selected="false" title="How often other keywords come up in posts that mention the term">Co-mentions</button>
+                  <button type="button" class="mx-tab" role="tab" data-view="matrix" aria-selected="false" title="Author × keyword heat-map">Heat map</button>
+                  <button type="button" id="mx-back" class="pill back" hidden title="Undo the click: restore the account and search pattern from before"></button>
+                </div>
+                <div class="mx-inputs">
+                  <div class="mx-term for-term">
+                    <input id="mx-term" type="text" placeholder="term or phrase, e.g.  iran   or  gas prices" spellcheck="false" autocomplete="off" aria-label="Term or phrase">
+                    <span id="mx-term-count" class="term-count" aria-live="polite"></span>
+                    <nav id="mx-trail" class="mx-trail" aria-label="Term trail" hidden></nav>
+                  </div>
+                  <textarea id="mx-keywords" class="for-keywords" rows="4" spellcheck="false" placeholder="Keywords, one per line. Optional label before  ::  e.g.&#10;gas prices&#10;regime&#10;AI :: \b(?:ai|llms?)\b"></textarea>
+                </div>
+                <div class="matrix-opts">
+                  <label class="for-matrix">count
+                    <select id="mx-metric" title="What each cell counts">
+                      <option value="posts">posts that mention it</option>
+                      <option value="mentions">total mentions</option>
+                      <option value="rate">mentions per 100 posts</option>
+                    </select>
+                  </label>
+                  <label class="for-clouds">weight
+                    <select id="mx-weight" title="How words are sized">
+                      <option value="distinctive">distinctive words</option>
+                      <option value="frequent">frequent words</option>
+                    </select>
+                  </label>
+                  <label class="for-clouds" title="Most words per cloud">words <input id="mx-words" type="number" min="5" max="150" step="5" value="60"></label>
+                  <label class="for-authors" title="How many authors to show">authors <input id="mx-rows" type="number" min="1" max="60" step="1" value="12"></label>
+                  <label class="chk x-only"><input type="checkbox" id="mx-table"> show as table</label>
+                  <span class="mx-actions">
+                    <button type="button" id="mx-add" class="for-keywords" title="Append the pattern from the search box as a keyword">Add current pattern</button>
+                    <button type="button" id="mx-expand" class="c-only" title="Show this view at full width in the main column">Expand</button>
+                    <details class="menu export-menu x-only" id="mx-export">
+                      <summary title="Download the image, or its numbers as CSV">Export</summary>
+                      <div class="popover export-opts">
+                        <input id="mx-title" type="text" placeholder="Image title (optional)" spellcheck="false" aria-label="Image title">
+                        <label title="Colours of the downloaded image">image theme
+                          <select id="mx-theme">
+                            <option value="auto">as the page</option>
+                            <option value="light">light</option>
+                            <option value="dark">dark</option>
+                          </select>
+                        </label>
+                        <div class="menu-list">
+                          <button type="button" id="mx-svg" title="Download the image as SVG (1080 × 1080)">SVG image</button>
+                          <button type="button" id="mx-png" title="Download the image as PNG (2160 × 2160)">PNG image</button>
+                          <button type="button" id="mx-csv" title="Download the numbers as CSV">CSV</button>
+                        </div>
+                      </div>
+                    </details>
+                  </span>
+                </div>
+                <p class="hint x-only" id="mx-hint"></p>
+              </div>
+              <div id="mx-error" class="error" hidden></div>
+              <div id="mx-view" class="matrix-view"></div>
+              <div id="mx-table-wrap" class="table-wrap" hidden>
+                <table id="mx-table-el">
+                  <thead id="mx-table-head"></thead>
+                  <tbody id="mx-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="ctx-note" id="mx-away" hidden>Topics are in the main column.</p>
+      </div>
+    </aside>
+  </main>
+
+  <div id="sel-tools" class="sel-tools" role="toolbar" aria-label="Selected text" hidden>
+    <button type="button" data-act="filter" class="primary" title="Show only the posts containing this text (plain-text search)">Filter posts</button>
+    <button type="button" data-act="keyword" title="Add this text to the Topics keywords (co-mentions and the heat map)">+ Keyword</button>
+    <button type="button" data-act="x" title="Search X for this exact phrase, latest first">Search X ↗</button>
+    <button type="button" data-act="copy" title="Copy the selected text">Copy</button>
+  </div>
+  <div id="chord-tray" class="chord-tray" role="dialog" aria-label="Search X for the Shift-clicked words" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden><span class="t"></span><button type="button" class="undo" hidden>Undo</button></div>
+
+  <script src="db.js"></script>
+  <script src="search.js"></script>
+  <script src="matrix.js"></script>
+  <script src="words.js"></script>
+  <script src="xsearch.js"></script>
+  <script src="clouds.js"></script>
+  <script src="network.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>X Feed Analyzer</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; width: 300px; padding: 14px 16px 12px;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #16181c; color: #e7e9ea;
+    }
+    h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+    h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: #1d9bf0; display: inline-block; }
+    .stat { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
+    .stat small { font-size: 12px; font-weight: 400; color: #8b98a5; margin-left: 6px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; user-select: none; }
+    .row input { accent-color: #1d9bf0; width: 15px; height: 15px; margin: 0; }
+    code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #f4a52a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+    button {
+      width: 100%; margin-top: 6px; padding: 9px 12px; border: 0; border-radius: 999px;
+      background: #1d9bf0; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.secondary { background: #202327; color: #e7e9ea; border: 1px solid #3b4046; }
+    .note { color: #8b98a5; font-size: 11px; margin: 12px 0 0; }
+  </style>
+</head>
+<body>
+  <h1><span class="dot"></span> X Feed Analyzer</h1>
+  <div class="stat"><span id="count">–</span><small>posts catalogued</small></div>
+  <label class="row"><input type="checkbox" id="capture"> Capture posts while browsing X</label>
+  <label class="row"><input type="checkbox" id="filter-enabled"> Live filter <code id="filter-pattern" title=""></code></label>
+  <button id="open">Open catalogue</button>
+  <button id="open-network" class="secondary" title="Who quotes, replies to and reposts whom, from the posts you have captured">Network map</button>
+  <p class="note">Everything stays in this browser. No API, no servers, no telemetry.</p>
+  <script src="popup.js"></script>
+</body>
+</html>
